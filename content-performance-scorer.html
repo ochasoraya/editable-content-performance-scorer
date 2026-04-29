@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Content Performance Scorer</title>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#09090f;
+  --surface:#111117;
+  --surface2:#1a1a23;
+  --border:rgba(255,255,255,0.07);
+  --border2:rgba(255,255,255,0.14);
+  --text:#f0ede8;
+  --muted:#5a5a6e;
+  --accent:#ffe566;
+  --green:#00e5a0;
+  --red:#ff4d6d;
+  --blue:#4d9fff;
+  --score-a:#00e5a0;
+  --score-b:#ffe566;
+  --score-c:#ff9a3c;
+  --score-d:#ff4d6d;
+}
+html,body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;min-height:100vh}
+
+/* ambient glow */
+body::after{content:'';position:fixed;top:20%;left:50%;transform:translateX(-50%);width:600px;height:300px;background:radial-gradient(ellipse,rgba(255,229,102,0.05) 0%,transparent 70%);pointer-events:none;z-index:0}
+
+.wrap{position:relative;z-index:1;max-width:920px;margin:0 auto;padding:2.5rem 1.5rem 5rem}
+
+/* HERO */
+.hero{margin-bottom:2.5rem;text-align:center}
+.hero-tag{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:0.2em;text-transform:uppercase;color:var(--muted);margin-bottom:14px;display:block}
+.hero h1{font-family:'Instrument Serif',serif;font-size:clamp(2.4rem,7vw,4.8rem);line-height:1.05;color:var(--text);margin-bottom:14px}
+.hero h1 em{color:var(--accent);font-style:italic}
+.hero-sub{font-size:15px;color:var(--muted);max-width:480px;margin:0 auto;line-height:1.65}
+
+/* PLATFORM SELECTOR */
+.platform-row{display:flex;gap:10px;justify-content:center;margin-bottom:2rem;flex-wrap:wrap}
+.plat-btn{background:var(--surface);border:1px solid var(--border);border-radius:100px;padding:8px 20px;font-size:13px;font-weight:500;color:var(--muted);cursor:pointer;transition:all 0.2s}
+.plat-btn:hover{border-color:var(--border2);color:var(--text)}
+.plat-btn.active{background:var(--accent);border-color:var(--accent);color:#09090f;font-weight:600}
+
+/* FORM */
+.form-card{background:var(--surface);border:1px solid var(--border);border-radius:24px;padding:2rem;margin-bottom:1.5rem}
+.form-section{margin-bottom:1.5rem}
+.form-section:last-child{margin-bottom:0}
+.form-label-group{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);margin-bottom:1rem;padding-bottom:8px;border-bottom:1px solid var(--border)}
+
+.field-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:560px){.field-grid{grid-template-columns:1fr}}
+.field-grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+@media(max-width:560px){.field-grid-3{grid-template-columns:1fr 1fr}}
+
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted)}
+.field input, .field select{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:11px 14px;font-family:'DM Mono',monospace;font-size:13px;color:var(--text);outline:none;transition:border-color 0.2s;width:100%}
+.field input:focus,.field select:focus{border-color:var(--accent)}
+.field select option{background:var(--surface2)}
+
+/* TOGGLE FIELDS */
+.toggle-group{display:flex;flex-direction:column;gap:10px}
+.toggle-item{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:var(--surface2);border:1px solid var(--border);border-radius:12px}
+.toggle-label{font-size:13px;color:var(--text)}
+.toggle-sub{font-size:11px;color:var(--muted);margin-top:2px}
+.toggle{position:relative;width:40px;height:22px;flex-shrink:0}
+.toggle input{opacity:0;width:0;height:0}
+.toggle-track{position:absolute;inset:0;background:var(--border2);border-radius:100px;cursor:pointer;transition:background 0.2s}
+.toggle input:checked+.toggle-track{background:var(--accent)}
+.toggle-track::after{content:'';position:absolute;left:3px;top:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:transform 0.2s}
+.toggle input:checked+.toggle-track::after{transform:translateX(18px)}
+
+/* SUBMIT */
+.submit-row{text-align:center;margin-top:1.5rem}
+.btn{background:var(--accent);color:#09090f;border:none;border-radius:14px;padding:15px 40px;font-weight:700;font-size:15px;cursor:pointer;letter-spacing:0.01em;transition:transform 0.15s,box-shadow 0.15s}
+.btn:hover{transform:translateY(-2px);box-shadow:0 10px 30px rgba(255,229,102,0.3)}
+
+/* RESULTS */
+.results{display:none;animation:fadeUp 0.5s ease both}
+.results.show{display:block}
+@keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+
+/* SCORE HERO */
+.score-hero{background:var(--surface);border:1px solid var(--border);border-radius:24px;padding:2rem;margin-bottom:1.5rem;display:flex;align-items:center;gap:2rem;flex-wrap:wrap}
+.score-circle{width:120px;height:120px;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0;border:3px solid;position:relative}
+.score-num{font-family:'Instrument Serif',serif;font-size:3rem;line-height:1;font-weight:400}
+.score-max{font-family:'DM Mono',monospace;font-size:11px;color:var(--muted)}
+.score-info{flex:1;min-width:200px}
+.score-grade{font-family:'Instrument Serif',serif;font-size:2.4rem;margin-bottom:4px}
+.score-verdict{font-size:14px;color:var(--muted);line-height:1.6;margin-bottom:12px}
+.score-action{display:inline-block;padding:8px 18px;border-radius:100px;font-size:12px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase}
+
+/* METRIC BARS */
+.metric-bars{background:var(--surface);border:1px solid var(--border);border-radius:24px;padding:1.75rem;margin-bottom:1.5rem}
+.metric-bars h3{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:0.15em;text-transform:uppercase;color:var(--muted);margin-bottom:1.25rem}
+.bar-item{margin-bottom:1rem}
+.bar-item:last-child{margin-bottom:0}
+.bar-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+.bar-name{font-size:13px;font-weight:500}
+.bar-val{font-family:'DM Mono',monospace;font-size:12px;color:var(--muted)}
+.bar-track{height:6px;background:var(--surface2);border-radius:100px;overflow:hidden}
+.bar-fill{height:100%;border-radius:100px;transition:width 1s cubic-bezier(.4,0,.2,1)}
+
+/* RECOMMENDATIONS */
+.reco-list{background:var(--surface);border:1px solid var(--border);border-radius:24px;padding:1.75rem;margin-bottom:1.5rem}
+.reco-list h3{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:0.15em;text-transform:uppercase;color:var(--muted);margin-bottom:1.25rem}
+.reco-item{display:flex;gap:14px;padding:14px 0;border-bottom:1px solid var(--border)}
+.reco-item:last-child{border-bottom:none;padding-bottom:0}
+.reco-icon{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;background:var(--surface2)}
+.reco-body{flex:1}
+.reco-title{font-size:14px;font-weight:600;margin-bottom:4px}
+.reco-text{font-size:13px;color:var(--muted);line-height:1.6}
+
+/* RADAR */
+.radar-card{background:var(--surface);border:1px solid var(--border);border-radius:24px;padding:1.75rem;margin-bottom:1.5rem}
+.radar-card h3{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:0.15em;text-transform:uppercase;color:var(--muted);margin-bottom:1.25rem}
+.radar-wrap{position:relative;height:280px;max-width:400px;margin:0 auto}
+
+.reset-btn{display:block;margin:0 auto;background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:100px;padding:10px 24px;font-size:13px;cursor:pointer;transition:all 0.2s;font-family:'DM Sans',sans-serif}
+.reset-btn:hover{border-color:var(--border2);color:var(--text)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="hero">
+    <span class="hero-tag">Tool 02 · Creative Intelligence</span>
+    <h1>Content<br><em>Performance</em> Scorer</h1>
+    <p class="hero-sub">Paste your video or post metrics — get an instant performance score, creative diagnosis, and action recommendations.</p>
+  </div>
+
+  <!-- PLATFORM -->
+  <div class="platform-row">
+    <button class="plat-btn active" onclick="setPlatform('tiktok',this)">🎵 TikTok</button>
+    <button class="plat-btn" onclick="setPlatform('meta',this)">📘 Meta / Instagram</button>
+    <button class="plat-btn" onclick="setPlatform('google',this)">🔍 Google / YouTube</button>
+  </div>
+
+  <!-- FORM -->
+  <div class="form-card">
+    <div class="form-section">
+      <p class="form-label-group">Reach & Engagement</p>
+      <div class="field-grid-3">
+        <div class="field">
+          <label>Impressions / Views</label>
+          <input type="number" id="impressions" placeholder="e.g. 120000" min="0">
+        </div>
+        <div class="field">
+          <label>Clicks / Link Taps</label>
+          <input type="number" id="clicks" placeholder="e.g. 4500" min="0">
+        </div>
+        <div class="field">
+          <label>Video Completions</label>
+          <input type="number" id="completions" placeholder="e.g. 38000" min="0">
+        </div>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <p class="form-label-group">Conversion & Revenue</p>
+      <div class="field-grid">
+        <div class="field">
+          <label>Conversions / Orders</label>
+          <input type="number" id="conversions" placeholder="e.g. 90" min="0">
+        </div>
+        <div class="field">
+          <label>Ad Spend ($)</label>
+          <input type="number" id="spend" placeholder="e.g. 800" min="0">
+        </div>
+        <div class="field">
+          <label>Revenue / GMV ($)</label>
+          <input type="number" id="revenue" placeholder="e.g. 3600" min="0">
+        </div>
+        <div class="field">
+          <label>CPV / CPM ($)</label>
+          <input type="number" id="cpv" placeholder="e.g. 0.18" step="0.01" min="0">
+        </div>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <p class="form-label-group">Content Signals</p>
+      <div class="toggle-group">
+        <div class="toggle-item">
+          <div><div class="toggle-label">Strong hook (first 3 seconds)</div><div class="toggle-sub">High retain rate at 3s mark</div></div>
+          <label class="toggle"><input type="checkbox" id="hook"><span class="toggle-track"></span></label>
+        </div>
+        <div class="toggle-item">
+          <div><div class="toggle-label">Clear CTA present</div><div class="toggle-sub">Shop now, learn more, swipe up etc.</div></div>
+          <label class="toggle"><input type="checkbox" id="cta"><span class="toggle-track"></span></label>
+        </div>
+        <div class="toggle-item">
+          <div><div class="toggle-label">Product demo / UGC style</div><div class="toggle-sub">Shows product in use, authentic feel</div></div>
+          <label class="toggle"><input type="checkbox" id="ugc"><span class="toggle-track"></span></label>
+        </div>
+        <div class="toggle-item">
+          <div><div class="toggle-label">Trending audio / format</div><div class="toggle-sub">Uses viral sound or trending template</div></div>
+          <label class="toggle"><input type="checkbox" id="trending"><span class="toggle-track"></span></label>
+        </div>
+        <div class="toggle-item">
+          <div><div class="toggle-label">Text overlay / captions</div><div class="toggle-sub">Key message visible without sound</div></div>
+          <label class="toggle"><input type="checkbox" id="captions"><span class="toggle-track"></span></label>
+        </div>
+      </div>
+    </div>
+
+    <div class="submit-row">
+      <button class="btn" onclick="scoreContent()">Score This Content →</button>
+    </div>
+  </div>
+
+  <!-- RESULTS -->
+  <div class="results" id="results">
+
+    <div class="score-hero">
+      <div class="score-circle" id="score-circle">
+        <div class="score-num" id="score-num">—</div>
+        <div class="score-max">/100</div>
+      </div>
+      <div class="score-info">
+        <div class="score-grade" id="score-grade">—</div>
+        <p class="score-verdict" id="score-verdict">—</p>
+        <span class="score-action" id="score-action">—</span>
+      </div>
+    </div>
+
+    <div class="metric-bars">
+      <h3>Metric Breakdown</h3>
+      <div id="bars-container"></div>
+    </div>
+
+    <div class="radar-card">
+      <h3>Performance Radar</h3>
+      <div class="radar-wrap"><canvas id="radarChart"></canvas></div>
+    </div>
+
+    <div class="reco-list">
+      <h3>Action Recommendations</h3>
+      <div id="recos"></div>
+    </div>
+
+    <button class="reset-btn" onclick="reset()">← Score another piece of content</button>
+  </div>
+
+</div>
+
+<script>
+let currentPlatform = 'tiktok';
+let radarChart = null;
+
+function setPlatform(p, el) {
+  currentPlatform = p;
+  document.querySelectorAll('.plat-btn').forEach(b=>b.classList.remove('active'));
+  el.classList.add('active');
+}
+
+function v(id){ return parseFloat(document.getElementById(id).value)||0; }
+function b(id){ return document.getElementById(id).checked; }
+
+function clamp(val,min,max){ return Math.min(max,Math.max(min,val)); }
+
+function scoreContent() {
+  const imp = v('impressions');
+  const clicks = v('clicks');
+  const compl = v('completions');
+  const convs = v('conversions');
+  const spend = v('spend');
+  const rev = v('revenue');
+  const cpv = v('cpv');
+
+  const ctr = imp > 0 ? (clicks/imp)*100 : 0;
+  const cvr = clicks > 0 ? (convs/clicks)*100 : 0;
+  const completionRate = imp > 0 ? (compl/imp)*100 : 0;
+  const roas = spend > 0 ? rev/spend : 0;
+  const cpa = convs > 0 ? spend/convs : 0;
+
+  // Platform benchmarks
+  const bench = {
+    tiktok: { ctr:[1,3,6], cvr:[1,2.5,5], cr:[20,35,55], roas:[2,4,7] },
+    meta:   { ctr:[0.5,2,4], cvr:[1,3,6], cr:[15,30,50], roas:[2,4,7] },
+    google: { ctr:[2,5,10], cvr:[2,4,8], cr:[10,25,40], roas:[3,5,10] },
+  }[currentPlatform];
+
+  function scoreMet(val, [bad,ok,great], maxScore) {
+    if(val === 0) return 0;
+    if(val >= great) return maxScore;
+    if(val >= ok) return maxScore * (0.6 + 0.4*(val-ok)/(great-ok));
+    if(val >= bad) return maxScore * (0.3 + 0.3*(val-bad)/(ok-bad));
+    return maxScore * 0.1;
+  }
+
+  const ctrScore   = scoreMet(ctr, bench.ctr, 25);
+  const cvrScore   = scoreMet(cvr, bench.cvr, 25);
+  const crScore    = scoreMet(completionRate, bench.cr, 20);
+  const roasScore  = scoreMet(roas, bench.roas, 20);
+
+  // Creative toggles
+  const hook     = b('hook')     ? 4 : 0;
+  const cta      = b('cta')      ? 2 : 0;
+  const ugc      = b('ugc')      ? 2 : 0;
+  const trending = b('trending') ? 1 : 0;
+  const captions = b('captions') ? 1 : 0;
+  const creativeScore = hook+cta+ugc+trending+captions;
+
+  const total = Math.round(clamp(ctrScore+cvrScore+crScore+roasScore+creativeScore, 0, 100));
+
+  // Grade
+  let grade, color, verdict, action, actionBg;
+  if(total>=85){
+    grade='A+'; color='var(--score-a)'; actionBg='rgba(0,229,160,0.15)';
+    verdict='Exceptional performance. This content is a proven winner — it should be scaled, turned into a dark post, and used as a creative brief template for future videos.';
+    action='🚀 Scale & Dark Post';
+  } else if(total>=70){
+    grade='A'; color='var(--score-a)'; actionBg='rgba(0,229,160,0.15)';
+    verdict='Strong performer above benchmarks. Minor optimisations could push this to exceptional. Consider A/B testing the CTA or hook variation.';
+    action='✅ Scale with testing';
+  } else if(total>=55){
+    grade='B'; color='var(--score-b)'; actionBg='rgba(255,229,102,0.15)';
+    verdict='Solid content with clear upside. Some metrics are lagging — focus on the weakest area before scaling spend.';
+    action='🔧 Optimise then scale';
+  } else if(total>=40){
+    grade='C'; color='var(--score-c)'; actionBg='rgba(255,154,60,0.15)';
+    verdict='Below benchmark. This content needs significant creative or targeting work. Don\'t scale — diagnose first.';
+    action='⚠️ Diagnose & iterate';
+  } else {
+    grade='D'; color='var(--score-d)'; actionBg='rgba(255,77,109,0.15)';
+    verdict='Underperforming. Pause spend on this creative and go back to brief. Review hook, audience targeting, and landing page alignment.';
+    action='🛑 Pause & rework';
+  }
+
+  // Render score circle
+  const circle = document.getElementById('score-circle');
+  circle.style.borderColor = color;
+  document.getElementById('score-num').style.color = color;
+  document.getElementById('score-num').textContent = total;
+  document.getElementById('score-grade').textContent = `Grade ${grade}`;
+  document.getElementById('score-grade').style.color = color;
+  document.getElementById('score-verdict').textContent = verdict;
+  const sa = document.getElementById('score-action');
+  sa.textContent = action;
+  sa.style.background = actionBg;
+  sa.style.color = color;
+
+  // Metric bars
+  const bars = [
+    { name:'Click-Through Rate', val: ctr.toFixed(2)+'%', score: Math.round(ctrScore), max:25, note: `Benchmark: ${bench.ctr[1]}%+` },
+    { name:'Conversion Rate', val: cvr.toFixed(2)+'%', score: Math.round(cvrScore), max:25, note: `Benchmark: ${bench.cvr[1]}%+` },
+    { name:'Video Completion Rate', val: completionRate.toFixed(1)+'%', score: Math.round(crScore), max:20, note: `Benchmark: ${bench.cr[1]}%+` },
+    { name:'ROAS', val: roas>0?roas.toFixed(2)+'x':'N/A', score: Math.round(roasScore), max:20, note: `Benchmark: ${bench.roas[1]}x+` },
+    { name:'Creative Signals', val: `${creativeScore}/10`, score: creativeScore, max:10, note:'Hook, CTA, UGC, trend, captions' },
+  ];
+
+  document.getElementById('bars-container').innerHTML = bars.map(b=>{
+    const pct = (b.score/b.max*100);
+    const barColor = pct>=75?'var(--green)':pct>=50?'var(--accent)':pct>=30?'#ff9a3c':'var(--red)';
+    return `
+    <div class="bar-item">
+      <div class="bar-head">
+        <span class="bar-name">${b.name}</span>
+        <span class="bar-val">${b.val} · ${b.score}/${b.max}pts · <span style="color:var(--muted);font-size:11px">${b.note}</span></span>
+      </div>
+      <div class="bar-track">
+        <div class="bar-fill" style="width:${pct}%;background:${barColor}"></div>
+      </div>
+    </div>`;
+  }).join('');
+
+  // Radar chart
+  if(radarChart) radarChart.destroy();
+  radarChart = new Chart(document.getElementById('radarChart'), {
+    type:'radar',
+    data:{
+      labels:['CTR','CVR','Completion','ROAS','Creative'],
+      datasets:[{
+        label:'Your Content',
+        data:[
+          Math.round(ctrScore/25*100),
+          Math.round(cvrScore/25*100),
+          Math.round(crScore/20*100),
+          Math.round(roasScore/20*100),
+          Math.round(creativeScore/10*100)
+        ],
+        backgroundColor:'rgba(255,229,102,0.12)',
+        borderColor:'rgba(255,229,102,0.8)',
+        pointBackgroundColor:'#ffe566',
+        pointRadius:4,
+        borderWidth:2
+      },{
+        label:'Benchmark',
+        data:[60,60,60,60,60],
+        backgroundColor:'rgba(255,255,255,0.03)',
+        borderColor:'rgba(255,255,255,0.1)',
+        pointBackgroundColor:'rgba(255,255,255,0.2)',
+        pointRadius:3,
+        borderWidth:1,
+        borderDash:[4,4]
+      }]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      scales:{r:{
+        min:0,max:100,
+        angleLines:{color:'rgba(255,255,255,0.06)'},
+        grid:{color:'rgba(255,255,255,0.06)'},
+        pointLabels:{font:{family:'DM Mono',size:11},color:'rgba(255,255,255,0.4)'},
+        ticks:{display:false}
+      }},
+      plugins:{legend:{labels:{font:{family:'DM Mono',size:10},color:'rgba(255,255,255,0.3)',boxWidth:8,padding:12}}}
+    }
+  });
+
+  // Recommendations
+  const recos = [];
+  if(ctr < bench.ctr[1]) recos.push({icon:'🎣', title:'Improve your hook', text:`CTR of ${ctr.toFixed(2)}% is below the ${bench.ctr[1]}% benchmark. Test a pattern-interrupt opening — bold text overlay, unexpected first frame, or a direct question in the first 2 seconds.`});
+  if(cvr < bench.cvr[1]) recos.push({icon:'🛒', title:'Strengthen the CTA & landing page', text:`CVR of ${cvr.toFixed(2)}% is below ${bench.cvr[1]}%. Audit your landing page — does it match the ad's promise? Reduce friction: fewer fields, faster load, clearer offer.`});
+  if(completionRate < bench.cr[1]) recos.push({icon:'⏱️', title:'Boost watch time', text:`Completion rate of ${completionRate.toFixed(1)}% is below ${bench.cr[1]}%. Shorten video or add more value earlier. The first 6 seconds must deliver the core message.`});
+  if(roas>0 && roas<bench.roas[1]) recos.push({icon:'💰', title:'ROAS below target', text:`ROAS of ${roas.toFixed(2)}x is below the ${bench.roas[1]}x benchmark. Before scaling budget, improve CVR or AOV. Test bundle offers or upsells on the thank-you page.`});
+  if(!b('hook')) recos.push({icon:'⚡', title:'Invest in the hook', text:'A strong first-3-second hook is the single highest-impact element for paid video. Test 3 hook variants on your best performer.'});
+  if(!b('cta')) recos.push({icon:'📣', title:'Add a clear CTA', text:'Missing an explicit CTA is leaving conversions on the table. Make the desired action unmissable — both in audio and as text overlay.'});
+  if(total>=70 && recos.length===0) recos.push({icon:'🏆', title:'Scale this creative', text:'This content is performing well across all metrics. Now is the time to scale spend, create dark post variants, and brief the team to produce similar content.'});
+
+  document.getElementById('recos').innerHTML = recos.map(r=>`
+    <div class="reco-item">
+      <div class="reco-icon">${r.icon}</div>
+      <div class="reco-body">
+        <p class="reco-title">${r.title}</p>
+        <p class="reco-text">${r.text}</p>
+      </div>
+    </div>
+  `).join('');
+
+  document.getElementById('results').classList.add('show');
+  document.getElementById('results').scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+function reset(){
+  document.getElementById('results').classList.remove('show');
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+</script>
+</body>
+</html>
